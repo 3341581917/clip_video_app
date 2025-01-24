@@ -10,6 +10,7 @@ import base64
 from PIL import Image
 from io import BytesIO
 
+
 # Load frame embeddings
 def load_frame_embeddings(save_frame_embeddings_path: str):
     if os.path.exists(save_frame_embeddings_path):
@@ -19,6 +20,7 @@ def load_frame_embeddings(save_frame_embeddings_path: str):
         frame_embeddings = {}
 
     return frame_embeddings
+
 
 # Save frame embeddings
 def save_frame_embeddings(save_frame_embeddings_path: str, frame_embeddings: Dict[str, List[float]]):
@@ -41,33 +43,33 @@ def get_clip_text_embeddings(objects: List[str], saved_embeddings_path: str, api
     Returns:
         Dict: Dictionary containing CLIP embeddings.
     """
-    
+
     # Load existing embeddings if available
     embeddings = {}
     if os.path.exists(saved_embeddings_path):
         with open(saved_embeddings_path, 'rb') as f:
             embeddings = pickle.load(f)
-    
+
     # Generate new embeddings for objects that don't have one
     new_objects = [obj for obj in objects if obj not in embeddings]
 
     # Loop through text and embed
     for txt_object in new_objects:
         print(txt_object)
-        # CLIP Endppoint
-        request_endpoint = "http://localhost:9001" + "/clip/embed_text?api_key=" + api_key
+        # CLIP Endpoint
+        request_endpoint = "http://localhost:8080" + "/clip/embed_text?api_key=" + api_key
         # Payload
         payload = {
             "body": request_endpoint.split('=')[1],
             "text": txt_object
-            }
+        }
         # Request
         data = requests.post(
             request_endpoint, json=payload
-            ).json()
+        ).json()
         # Grab embeddings
         embedding = data["embeddings"]
-        
+
         # Add to dict
         embeddings[txt_object] = embedding
 
@@ -79,8 +81,9 @@ def get_clip_text_embeddings(objects: List[str], saved_embeddings_path: str, api
     # Save the updated embeddings
     with open(saved_embeddings_path, 'wb') as f:
         pickle.dump(embeddings, f)
-    
+
     return embeddings
+
 
 # Image Embedding
 def get_clip_image_embeddings(frame, api_key: str):
@@ -93,24 +96,25 @@ def get_clip_image_embeddings(frame, api_key: str):
     image_data.save(buffer, format="JPEG")
     image_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    # CLIP Endppoint
-    request_endpoint = "http://localhost:9001" +  "/clip/embed_image?api_key=" + api_key
+    # CLIP Endpoint
+    request_endpoint = "http://localhost:9001" + "/clip/embed_image?api_key=" + api_key
     # Payload
     payload = {
         "body": request_endpoint.split('=')[1],
         "image": {"type": "base64", "value": image_data},
-        }
+    }
 
     # Request
     data = requests.post(
         request_endpoint, json=payload
-        ).json()
+    ).json()
     # Grab embeddings
     embedding = data["embeddings"]
     return embedding
 
+
 # Frame / object similarity
-def get_most_similar_objects(frame_embedding: np.ndarray, object_embeddings: Dict[str, np.ndarray], 
+def get_most_similar_objects(frame_embedding: np.ndarray, object_embeddings: Dict[str, np.ndarray],
                              historical_scores: defaultdict, history_length: int = 1, top_n: int = 3) -> List[str]:
     """
     Find the N most similar objects based on CLIP embeddings with smoothing.
@@ -127,19 +131,19 @@ def get_most_similar_objects(frame_embedding: np.ndarray, object_embeddings: Dic
     """
     smoothed_similarities = {}
     frame_embedding = np.squeeze(frame_embedding)
-    
+
     for obj, obj_embedding in object_embeddings.items():
         obj_embedding = np.squeeze(obj_embedding)
         dot_product = np.dot(frame_embedding, obj_embedding)
         norm_frame = np.linalg.norm(frame_embedding)
         norm_obj = np.linalg.norm(obj_embedding)
         similarity = dot_product / (norm_frame * norm_obj)
-        
+
         # Update history and calculate smoothed score
         if len(historical_scores[obj]) >= history_length:
             historical_scores[obj].popleft()
         historical_scores[obj].append(similarity)
-        
+
         smoothed_similarity = sum(historical_scores[obj]) / len(historical_scores[obj])
         smoothed_similarities[obj] = smoothed_similarity
 
